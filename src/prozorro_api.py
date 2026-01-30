@@ -3,7 +3,7 @@
 """
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
@@ -35,9 +35,9 @@ class ProzorroAPI:
             Список тендерів
         """
         try:
-            # Розрахувати дату початку пошуку
-            date_from = datetime.now() - timedelta(hours=hours)
-            date_from_str = date_from.strftime('%Y-%m-%d')
+            # Розрахувати дату початку пошуку (UTC з timezone)
+            date_from = datetime.now(timezone.utc) - timedelta(hours=hours)
+            date_from_str = date_from.strftime('%Y-%m-%d %H:%M:%S UTC')
             
             print(f"🔍 Пошук тендерів з {date_from_str}...")
             
@@ -67,15 +67,30 @@ class ProzorroAPI:
                 
                 # Фільтрувати по даті
                 for tender in tenders:
-                    tender_date_str = tender.get('dateModified', '')
+                    # Використовуємо datePublished замість dateModified
+                    tender_date_str = tender.get('datePublished', tender.get('dateModified', ''))
+                    
+                    if not tender_date_str:
+                        continue
+                        
                     try:
-                        tender_date = datetime.fromisoformat(tender_date_str.replace('Z', '+00:00'))
+                        # Парсимо дату з timezone
+                        tender_date_str_clean = tender_date_str.replace('Z', '+00:00')
+                        tender_date = datetime.fromisoformat(tender_date_str_clean)
+                        
+                        # Якщо дата без timezone, додаємо UTC
+                        if tender_date.tzinfo is None:
+                            tender_date = tender_date.replace(tzinfo=timezone.utc)
+                        
+                        # Порівнюємо з date_from (обидві дати з timezone)
                         if tender_date >= date_from:
                             all_tenders.append(tender)
+                            print(f"  ✓ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')}")
                         else:
-                            # Якщо дата старіша - зупинити пагінацію
-                            return all_tenders
-                    except:
+                            # Якщо дата старіша - продовжуємо (не зупиняємо!)
+                            print(f"  ✗ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')} (старіше {hours}h)")
+                    except Exception as e:
+                        print(f"  ⚠️  Помилка парсингу дати для {tender.get('id')}: {e}")
                         continue
                 
                 # Отримати наступну сторінку
@@ -96,6 +111,8 @@ class ProzorroAPI:
             return []
         except Exception as e:
             print(f"❌ Неочікувана помилка: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def filter_translation_tenders(self, tenders: List[Dict]) -> List[Dict]:
