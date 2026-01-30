@@ -41,12 +41,13 @@ class ProzorroAPI:
             
             print(f"🔍 Пошук тендерів з {date_from_str}...")
             
-            # Параметри запиту
+            # Параметри запиту з opt_fields для отримання items
             params = {
                 'offset': '',
                 'limit': 100,
                 'mode': '_all_',
-                'descending': 1
+                'descending': 1,
+                'opt_fields': 'id,title,datePublished,dateModified,items,value,tenderPeriod,procuringEntity,description'
             }
             
             all_tenders = []
