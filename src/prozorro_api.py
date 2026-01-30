@@ -41,13 +41,12 @@ class ProzorroAPI:
             
             print(f"🔍 Пошук тендерів з {date_from_str}...")
             
-            # Параметри запиту з opt_fields для отримання items
+            # Параметри запиту (без opt_fields - він не працює)
             params = {
                 'offset': '',
                 'limit': 100,
                 'mode': '_all_',
-                'descending': 1,
-                'opt_fields': 'id,title,datePublished,dateModified,items,value,tenderPeriod,procuringEntity,description'
+                'descending': 1
             }
             
             all_tenders = []
@@ -119,9 +118,34 @@ class ProzorroAPI:
             traceback.print_exc()
             return []
     
+    def is_translation_tender(self, title: str) -> bool:
+        """
+        Перевірити чи тендер на послуги письмового перекладу за назвою
+        
+        Args:
+            title: Назва тендера
+            
+        Returns:
+            True якщо це тендер на переклад
+        """
+        if not title:
+            return False
+        
+        title_lower = title.lower()
+        
+        # Варіант 1: "письмовий переклад" (обидва слова разом)
+        if 'письмов' in title_lower and 'переклад' in title_lower:
+            return True
+        
+        # Варіант 2: CPV код у назві
+        if '79530000' in title_lower:
+            return True
+        
+        return False
+    
     def filter_translation_tenders(self, tenders: List[Dict]) -> List[Dict]:
         """
-        Фільтрувати тендери по CPV коду перекладів
+        Фільтрувати тендери по назві (пошук ключових слів)
         
         Args:
             tenders: Список всіх тендерів
@@ -131,49 +155,38 @@ class ProzorroAPI:
         """
         translation_tenders = []
         
-        print(f"\n🔍 Перевірка {len(tenders)} тендерів на наявність CPV {self.cpv_code}...\n")
+        print(f"\n🔍 Перевірка {len(tenders)} тендерів по назві...")
+        print(f"   Шукаємо: 'письмов' + 'переклад' або '79530000'\n")
         
-        # Перевіряємо перші 50 тендерів детально
-        check_limit = min(50, len(tenders))
+        # Перевіряємо перші 20 тендерів детально
+        check_limit = min(20, len(tenders))
         
         for i, tender in enumerate(tenders):
             tender_id = tender.get('id', 'unknown')
+            title = tender.get('title', '')
             
-            # Перевірити items на наявність CPV коду
-            items = tender.get('items', [])
-            
-            if not items:
+            if not title:
                 if i < check_limit:
-                    print(f"  ⚠️  {tender_id}: немає items")
+                    print(f"  ⚠️  {tender_id}: немає назви")
                 continue
             
-            found = False
-            cpv_codes = []
-            
-            for item in items:
-                classification = item.get('classification', {})
-                cpv_id = classification.get('id', '')
-                
-                if cpv_id:
-                    cpv_codes.append(cpv_id)
-                
-                # Перевірити чи CPV код співпадає
-                if cpv_id.startswith(self.cpv_code):
-                    if not found:  # Додаємо тільки раз
-                        translation_tenders.append(tender)
-                        print(f"  ✅ {tender_id}: CPV {cpv_id} - MATCH!")
-                        print(f"     {tender.get('title', '')[:80]}...")
-                        found = True
-            
-            # Логуємо перші 50 тендерів детально
-            if not found and cpv_codes and i < check_limit:
-                cpv_list = ', '.join(cpv_codes[:3])
-                if len(cpv_codes) > 3:
-                    cpv_list += f" (та ще {len(cpv_codes) - 3})"
-                print(f"  ❌ {tender_id}: CPV {cpv_list}")
+            # Перевірити по назві
+            if self.is_translation_tender(title):
+                translation_tenders.append(tender)
+                print(f"  ✅ {tender_id}: MATCH!")
+                print(f"     {title[:100]}...")
+            else:
+                # Логуємо перші 20 тендерів детально
+                if i < check_limit:
+                    print(f"  ❌ {tender_id}: {title[:80]}...")
         
         if len(tenders) > check_limit:
-            print(f"\n  ... перевірено ще {len(tenders) - check_limit} тендерів (логування скорочено)")
+            remaining = len(tenders) - check_limit
+            remaining_found = len([t for t in tenders[check_limit:] if self.is_translation_tender(t.get('title', ''))])
+            if remaining_found > 0:
+                print(f"\n  ... перевірено ще {remaining} тендерів (знайдено {remaining_found})")
+            else:
+                print(f"\n  ... перевірено ще {remaining} тендерів (логування скорочено)")
         
         print(f"\n📊 Знайдено {len(translation_tenders)} тендерів на послуги письмового перекладу")
         return translation_tenders
@@ -213,7 +226,8 @@ class ProzorroAPI:
         print(f"\n{'='*60}")
         print(f"🚀 Початок пошуку нових тендерів на переклад")
         print(f"📅 Період: останні {hours} годин")
-        print(f"🏷️  CPV код: {self.cpv_code} (Послуги з письмового перекладу)")
+        print(f"🔍 Метод пошуку: по ключовим словам у назві")
+        print(f"🏷️  Ключові слова: 'письмов' + 'переклад' або '79530000'")
         print(f"{'='*60}\n")
         
         # Отримати всі тендери
@@ -223,7 +237,7 @@ class ProzorroAPI:
             print("⚠️  Тендери не знайдено")
             return []
         
-        # Фільтрувати по CPV коду перекладів
+        # Фільтрувати по назві
         translation_tenders = self.filter_translation_tenders(all_tenders)
         
         print(f"\n{'='*60}")
