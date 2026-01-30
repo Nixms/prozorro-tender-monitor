@@ -85,10 +85,13 @@ class ProzorroAPI:
                         # Порівнюємо з date_from (обидві дати з timezone)
                         if tender_date >= date_from:
                             all_tenders.append(tender)
-                            print(f"  ✓ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')}")
+                            # Виводимо лише перші та останні 5 тендерів для стислості
+                            if len(all_tenders) <= 5 or len(all_tenders) % 100 == 0:
+                                print(f"  ✓ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')}")
                         else:
                             # Якщо дата старіша - продовжуємо (не зупиняємо!)
-                            print(f"  ✗ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')} (старіше {hours}h)")
+                            if page < 2:  # Логуємо лише перші сторінки
+                                print(f"  ✗ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')} (старіше {hours}h)")
                     except Exception as e:
                         print(f"  ⚠️  Помилка парсингу дати для {tender.get('id')}: {e}")
                         continue
@@ -127,21 +130,51 @@ class ProzorroAPI:
         """
         translation_tenders = []
         
-        for tender in tenders:
+        print(f"\n🔍 Перевірка {len(tenders)} тендерів на наявність CPV {self.cpv_code}...\n")
+        
+        # Перевіряємо перші 50 тендерів детально
+        check_limit = min(50, len(tenders))
+        
+        for i, tender in enumerate(tenders):
+            tender_id = tender.get('id', 'unknown')
+            
             # Перевірити items на наявність CPV коду
             items = tender.get('items', [])
+            
+            if not items:
+                if i < check_limit:
+                    print(f"  ⚠️  {tender_id}: немає items")
+                continue
+            
+            found = False
+            cpv_codes = []
             
             for item in items:
                 classification = item.get('classification', {})
                 cpv_id = classification.get('id', '')
                 
+                if cpv_id:
+                    cpv_codes.append(cpv_id)
+                
                 # Перевірити чи CPV код співпадає
                 if cpv_id.startswith(self.cpv_code):
-                    translation_tenders.append(tender)
-                    print(f"✅ Знайдено тендер на переклад: {tender.get('id')} - {tender.get('title', '')[:50]}...")
-                    break  # Один тендер додаємо тільки раз
+                    if not found:  # Додаємо тільки раз
+                        translation_tenders.append(tender)
+                        print(f"  ✅ {tender_id}: CPV {cpv_id} - MATCH!")
+                        print(f"     {tender.get('title', '')[:80]}...")
+                        found = True
+            
+            # Логуємо перші 50 тендерів детально
+            if not found and cpv_codes and i < check_limit:
+                cpv_list = ', '.join(cpv_codes[:3])
+                if len(cpv_codes) > 3:
+                    cpv_list += f" (та ще {len(cpv_codes) - 3})"
+                print(f"  ❌ {tender_id}: CPV {cpv_list}")
         
-        print(f"📊 Знайдено {len(translation_tenders)} тендерів на послуги письмового перекладу")
+        if len(tenders) > check_limit:
+            print(f"\n  ... перевірено ще {len(tenders) - check_limit} тендерів (логування скорочено)")
+        
+        print(f"\n📊 Знайдено {len(translation_tenders)} тендерів на послуги письмового перекладу")
         return translation_tenders
     
     def get_tender_details(self, tender_id: str) -> Optional[Dict]:
