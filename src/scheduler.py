@@ -106,9 +106,7 @@ class TenderMonitor:
             replace_existing=True
         )
         
-        # Показати наступний запуск
-        next_run = scheduler.get_job('daily_tender_check').next_run_time
-        print(f"Наступна перевірка: {next_run.strftime('%d.%m.%Y %H:%M:%S')}\n")
+        print(f"Наступна перевірка заплановано на 09:00 ({timezone_str})\n")
         
         # Запустити першу перевірку одразу (для тестування)
         print("Виконуємо першу перевірку одразу...\n")
