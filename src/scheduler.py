@@ -1,10 +1,12 @@
 """
 Модуль для планування щоденних перевірок
 """
-import schedule
-import time
 import asyncio
 from datetime import datetime
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+import os
 from src.prozorro_api import ProzorroAPI
 from src.telegram_bot import TelegramNotifier
 from src.data_storage import DataStorage
@@ -76,28 +78,50 @@ class TenderMonitor:
             traceback.print_exc()
     
     def run_check(self):
-        """Запустити перевірку (синхронна обгортка для schedule)"""
+        """Запустити перевірку (синхронна обгортка для scheduler)"""
         asyncio.run(self.check_new_tenders())
     
     def start_scheduler(self):
         """Запустити планувальник для щоденних перевірок о 09:00"""
+        # Отримати часовий пояс з environment variables
+        timezone_str = os.getenv('TIMEZONE', 'Europe/Kiev')
+        timezone = pytz.timezone(timezone_str)
+        
         print(f"\n{'='*70}")
         print(f"Prozorro Tender Monitor запущено!")
-        print(f"Перевірки щоденно о 09:00")
+        print(f"Перевірки щоденно о 09:00 ({timezone_str})")
         print(f"Моніторинг CPV: 79530000-8 (Письмовий переклад)")
         print(f"{'='*70}\n")
         
+        # Створити scheduler
+        scheduler = BlockingScheduler(timezone=timezone)
+        
         # Запланувати щоденну перевірку о 09:00
-        schedule.every().day.at("09:00").do(self.run_check)
+        trigger = CronTrigger(hour=9, minute=0, timezone=timezone)
+        scheduler.add_job(
+            self.run_check,
+            trigger=trigger,
+            id='daily_tender_check',
+            name='Щоденна перевірка тендерів',
+            replace_existing=True
+        )
         
-        print(f"Наступна перевірка: {schedule.next_run()}\n")
+        # Показати наступний запуск
+        next_run = scheduler.get_job('daily_tender_check').next_run_time
+        print(f"Наступна перевірка: {next_run.strftime('%d.%m.%Y %H:%M:%S')}\n")
         
-        # Нескінченний цикл
+        # Запустити першу перевірку одразу (для тестування)
+        print("Виконуємо першу перевірку одразу...\n")
+        self.run_check()
+        
+        # Запустити scheduler
+        print(f"\n{'='*70}")
+        print(f"Scheduler запущено. Очікування наступної перевірки...")
+        print(f"{'='*70}\n")
+        
         try:
-            while True:
-                schedule.run_pending()
-                time.sleep(60)
-        except KeyboardInterrupt:
+            scheduler.start()
+        except (KeyboardInterrupt, SystemExit):
             print("\n\nЗупинка моніторингу...")
             print("До побачення!\n")
     
