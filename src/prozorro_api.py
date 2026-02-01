@@ -14,6 +14,14 @@ load_dotenv()
 class ProzorroAPI:
     """Клас для роботи з Prozorro API"""
     
+    # Типи конкурентних процедур
+    COMPETITIVE_TYPES = [
+        'aboveThresholdUA',      # Відкриті торги
+        'aboveThresholdEU',      # Відкриті торги ЄС
+        'competitiveDialogueUA', # Конкурентний діалог
+        'competitiveDialogueEU', # Конкурентний діалог ЄС
+    ]
+    
     def __init__(self):
         """Ініціалізація API клієнта"""
         self.api_url = os.getenv('PROZORRO_API_URL', 'https://api.prozorro.gov.ua/api/2.5/tenders')
@@ -41,7 +49,7 @@ class ProzorroAPI:
             
             print(f"🔍 Пошук тендерів з {date_from_str}...")
             
-            # Параметри запиту (без opt_fields - він не працює)
+            # Параметри запиту
             params = {
                 'offset': '',
                 'limit': 100,
@@ -67,7 +75,6 @@ class ProzorroAPI:
                 
                 # Фільтрувати по даті
                 for tender in tenders:
-                    # Використовуємо datePublished замість dateModified
                     tender_date_str = tender.get('datePublished', tender.get('dateModified', ''))
                     
                     if not tender_date_str:
@@ -82,16 +89,9 @@ class ProzorroAPI:
                         if tender_date.tzinfo is None:
                             tender_date = tender_date.replace(tzinfo=timezone.utc)
                         
-                        # Порівнюємо з date_from (обидві дати з timezone)
+                        # Порівнюємо з date_from
                         if tender_date >= date_from:
                             all_tenders.append(tender)
-                            # Виводимо лише перші та останні 5 тендерів для стислості
-                            if len(all_tenders) <= 5 or len(all_tenders) % 100 == 0:
-                                print(f"  ✓ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')}")
-                        else:
-                            # Якщо дата старіша - продовжуємо (не зупиняємо!)
-                            if page < 2:  # Логуємо лише перші сторінки
-                                print(f"  ✗ Тендер {tender.get('id')}: {tender_date.strftime('%Y-%m-%d %H:%M:%S')} (старіше {hours}h)")
                     except Exception as e:
                         print(f"  ⚠️  Помилка парсингу дати для {tender.get('id')}: {e}")
                         continue
@@ -118,6 +118,26 @@ class ProzorroAPI:
             traceback.print_exc()
             return []
     
+    def filter_competitive_tenders(self, tenders: List[Dict]) -> List[Dict]:
+        """
+        Фільтрувати тільки конкурентні процедури
+        
+        Args:
+            tenders: Список всіх тендерів
+            
+        Returns:
+            Список тільки конкурентних тендерів
+        """
+        competitive = []
+        
+        for tender in tenders:
+            proc_type = tender.get('procurementMethodType', '')
+            if proc_type in self.COMPETITIVE_TYPES:
+                competitive.append(tender)
+        
+        print(f"🎯 Відфільтровано конкурентних процедур: {len(competitive)} з {len(tenders)}")
+        return competitive
+    
     def is_translation_tender(self, title: str) -> bool:
         """
         Перевірити чи тендер на послуги письмового перекладу за назвою
@@ -143,54 +163,6 @@ class ProzorroAPI:
         
         return False
     
-    def filter_translation_tenders(self, tenders: List[Dict]) -> List[Dict]:
-        """
-        Фільтрувати тендери по назві (пошук ключових слів)
-        
-        Args:
-            tenders: Список всіх тендерів
-            
-        Returns:
-            Список тендерів на переклад
-        """
-        translation_tenders = []
-        
-        print(f"\n🔍 Перевірка {len(tenders)} тендерів по назві...")
-        print(f"   Шукаємо: 'письмов' + 'переклад' або '79530000'\n")
-        
-        # Перевіряємо перші 20 тендерів детально
-        check_limit = min(20, len(tenders))
-        
-        for i, tender in enumerate(tenders):
-            tender_id = tender.get('id', 'unknown')
-            title = tender.get('title', '')
-            
-            if not title:
-                if i < check_limit:
-                    print(f"  ⚠️  {tender_id}: немає назви")
-                continue
-            
-            # Перевірити по назві
-            if self.is_translation_tender(title):
-                translation_tenders.append(tender)
-                print(f"  ✅ {tender_id}: MATCH!")
-                print(f"     {title[:100]}...")
-            else:
-                # Логуємо перші 20 тендерів детально
-                if i < check_limit:
-                    print(f"  ❌ {tender_id}: {title[:80]}...")
-        
-        if len(tenders) > check_limit:
-            remaining = len(tenders) - check_limit
-            remaining_found = len([t for t in tenders[check_limit:] if self.is_translation_tender(t.get('title', ''))])
-            if remaining_found > 0:
-                print(f"\n  ... перевірено ще {remaining} тендерів (знайдено {remaining_found})")
-            else:
-                print(f"\n  ... перевірено ще {remaining} тендерів (логування скорочено)")
-        
-        print(f"\n📊 Знайдено {len(translation_tenders)} тендерів на послуги письмового перекладу")
-        return translation_tenders
-    
     def get_tender_details(self, tender_id: str) -> Optional[Dict]:
         """
         Отримати детальну інформацію про тендер
@@ -210,38 +182,101 @@ class ProzorroAPI:
             return data.get('data')
             
         except requests.exceptions.RequestException as e:
-            print(f"❌ Помилка отримання деталей тендера {tender_id}: {e}")
+            print(f"  ⚠️  Помилка отримання деталей {tender_id}: {e}")
             return None
     
-    def search_new_translation_tenders(self, hours: int = 24) -> List[Dict]:
+    def check_tenders_for_translation(self, tenders: List[Dict], max_check: int = 100) -> List[Dict]:
+        """
+        Перевірити тендери на наявність послуг письмового перекладу
+        
+        Args:
+            tenders: Список тендерів для перевірки
+            max_check: Максимальна кількість тендерів для детальної перевірки
+            
+        Returns:
+            Список тендерів на переклад
+        """
+        translation_tenders = []
+        
+        # Обмежити кількість для перевірки
+        tenders_to_check = tenders[:max_check]
+        
+        print(f"\n🔍 Перевірка {len(tenders_to_check)} тендерів на наявність послуг перекладу...")
+        print(f"   Робимо детальні запити для отримання назв...\n")
+        
+        for i, tender in enumerate(tenders_to_check, 1):
+            tender_id = tender.get('id')
+            
+            if not tender_id:
+                continue
+            
+            # Отримати деталі тендера (включно з title)
+            details = self.get_tender_details(tender_id)
+            
+            if not details:
+                continue
+            
+            title = details.get('title', '')
+            
+            # Перевірити чи це тендер на переклад
+            if self.is_translation_tender(title):
+                # Додати title до основного об'єкта тендера
+                tender['title'] = title
+                tender['description'] = details.get('description', '')
+                tender['value'] = details.get('value', {})
+                tender['tenderPeriod'] = details.get('tenderPeriod', {})
+                tender['procuringEntity'] = details.get('procuringEntity', {})
+                
+                translation_tenders.append(tender)
+                print(f"  ✅ {i}/{len(tenders_to_check)}: {tender_id} - MATCH!")
+                print(f"     {title[:80]}...")
+            else:
+                # Показуємо прогрес кожні 10 тендерів
+                if i % 10 == 0:
+                    print(f"  📊 Перевірено: {i}/{len(tenders_to_check)}...")
+        
+        print(f"\n📊 Знайдено {len(translation_tenders)} тендерів на послуги письмового перекладу")
+        return translation_tenders
+    
+    def search_new_translation_tenders(self, hours: int = 6) -> List[Dict]:
         """
         Пошук нових тендерів на переклад за останні N годин
         
         Args:
-            hours: Кількість годин назад
+            hours: Кількість годин назад (за замовчуванням 6 для 4 запусків на день)
             
         Returns:
             Список нових тендерів на переклад
         """
-        print(f"\n{'='*60}")
+        print(f"\n{'='*70}")
         print(f"🚀 Початок пошуку нових тендерів на переклад")
         print(f"📅 Період: останні {hours} годин")
-        print(f"🔍 Метод пошуку: по ключовим словам у назві")
-        print(f"🏷️  Ключові слова: 'письмов' + 'переклад' або '79530000'")
-        print(f"{'='*60}\n")
+        print(f"🎯 Фільтр: конкурентні процедури")
+        print(f"🔍 Ключові слова: 'письмов' + 'переклад' або '79530000'")
+        print(f"{'='*70}\n")
         
-        # Отримати всі тендери
+        # Крок 1: Отримати всі тендери за період
         all_tenders = self.get_recent_tenders(hours=hours)
         
         if not all_tenders:
             print("⚠️  Тендери не знайдено")
             return []
         
-        # Фільтрувати по назві
-        translation_tenders = self.filter_translation_tenders(all_tenders)
+        # Крок 2: Відфільтрувати тільки конкурентні процедури
+        competitive_tenders = self.filter_competitive_tenders(all_tenders)
         
-        print(f"\n{'='*60}")
+        if not competitive_tenders:
+            print("⚠️  Конкурентних тендерів не знайдено")
+            return []
+        
+        # Крок 3: Перевірити перші 100 на наявність послуг перекладу
+        translation_tenders = self.check_tenders_for_translation(
+            competitive_tenders, 
+            max_check=100
+        )
+        
+        print(f"\n{'='*70}")
         print(f"✅ Пошук завершено: знайдено {len(translation_tenders)} тендерів")
-        print(f"{'='*60}\n")
+        print(f"{'='*70}\n")
         
         return translation_tenders
