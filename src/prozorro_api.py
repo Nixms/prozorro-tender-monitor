@@ -16,10 +16,13 @@ class ProzorroAPI:
     
     # Типи конкурентних процедур
     COMPETITIVE_TYPES = [
-        'aboveThresholdUA',      # Відкриті торги
-        'aboveThresholdEU',      # Відкриті торги ЄС
-        'competitiveDialogueUA', # Конкурентний діалог
-        'competitiveDialogueEU', # Конкурентний діалог ЄС
+        'aboveThreshold',           # Відкриті торги (загальний тип)
+        'aboveThresholdUA',         # Відкриті торги UA
+        'aboveThresholdEU',         # Відкриті торги ЄС
+        'aboveThreshold.defense',   # Відкриті торги оборона
+        'competitiveDialogueUA',    # Конкурентний діалог
+        'competitiveDialogueEU',    # Конкурентний діалог ЄС
+        'competitiveOrdering',      # Конкурентні замовлення
     ]
     
     def __init__(self):
