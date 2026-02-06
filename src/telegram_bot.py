@@ -1,132 +1,68 @@
-"""
-Модуль для відправки повідомлень у Telegram
-"""
-import os
-from telegram import Bot
-from telegram.error import TelegramError
-from typing import Dict
-from dotenv import load_dotenv
+import sys
+sys.path.insert(0, 'src')
 
-# Завантажити змінні середовища
-load_dotenv()
+from prozorro_api import ProzorroAPI
+from telegram_bot import TelegramNotifier
+from data_storage import DataStorage
 
+print("="*70)
+print("ПОВНИЙ ТЕСТ БОТА З РЕАЛЬНИМ ТЕНДЕРОМ")
+print("="*70)
 
-class TelegramNotifier:
-    """Клас для відправки сповіщень у Telegram"""
+# Ініціалізація
+api = ProzorroAPI()
+telegram = TelegramNotifier()
+storage = DataStorage()
+
+# ID тендера з довгим форматом
+test_tender_id = "390e331367a74da7aac848cdb29dc3a1"
+
+print(f"\nОтримання деталей тендера {test_tender_id}...")
+
+# Отримати деталі
+details = api.get_tender_details(test_tender_id)
+
+if details:
+    # Створити об'єкт тендера
+    tender = {
+        'id': test_tender_id,
+        'title': details.get('title', ''),
+        'description': details.get('description', ''),
+        'value': details.get('value', {}),
+        'tenderPeriod': details.get('tenderPeriod', {}),
+        'procuringEntity': details.get('procuringEntity', {}),
+        'procurementMethodType': details.get('procurementMethodType', '')
+    }
     
-    def __init__(self):
-        """Ініціалізація Telegram бота"""
-        self.bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-        self.chat_id = os.getenv('TELEGRAM_CHAT_ID')
-        
-        if not self.bot_token or not self.chat_id:
-            raise ValueError("TELEGRAM_BOT_TOKEN та TELEGRAM_CHAT_ID мають бути встановлені в .env файлі")
-        
-        self.bot = Bot(token=self.bot_token)
+    print(f"\n✅ Тендер отримано!")
+    print(f"Назва: {tender['title'][:80]}...")
+    print(f"Тип: {tender['procurementMethodType']}")
     
-    def format_tender_message(self, tender: Dict) -> str:
-        """
-        Форматувати повідомлення про тендер
-        
-        Args:
-            tender: Словник з даними тендера
-            
-        Returns:
-            Відформатоване повідомлення
-        """
-        tender_id = tender.get('id', 'N/A')
-        title = tender.get('title', 'Без назви')
-        
-        # Бюджет
-        value = tender.get('value', {})
-        amount = value.get('amount', 0)
-        currency = value.get('currency', 'UAH')
-        budget = f"{amount:,.0f} {currency}".replace(',', ' ')
-        
-        # Дедлайн
-        tender_period = tender.get('tenderPeriod', {})
-        deadline = tender_period.get('endDate', 'Не вказано')
-        if deadline != 'Не вказано':
-            # Конвертувати ISO дату в читабельний формат
-            from datetime import datetime
-            try:
-                dt = datetime.fromisoformat(deadline.replace('Z', '+00:00'))
-                deadline = dt.strftime('%d.%m.%Y %H:%M')
-            except:
-                pass
-        
-        # Замовник
-        procuring_entity = tender.get('procuringEntity', {})
-        customer = procuring_entity.get('name', 'Не вказано')
-        
-        # Опис (обмежити до 200 символів)
-        description = tender.get('description', 'Опис відсутній')
-        if len(description) > 200:
-            description = description[:200] + '...'
-        
-        # Посилання (Варіант Б - два посилання)
-        prozorro_url = f"https://prozorro.gov.ua/tender/{tender_id}"
-        uub_url = f"https://tender.uub.com.ua/tender/{tender_id}/"
-        
-        # Форматування повідомлення
-        message = f"""🔔 Новий тендер на переклад
-
-📋 Назва: {title}
-💰 Бюджет: {budget} (з ПДВ)
-📅 Дедлайн подачі: {deadline}
-🏢 Замовник: {customer}
-📝 Опис: {description}
-
-🔗 Переглянути на Prozorro:
-{prozorro_url}
-
-🔗 Ваш майданчик UUB:
-{uub_url}
-"""
-        
-        return message
+    # Перевірити, чи вже оброблений
+    processed_ids = storage.load_processed_tenders()
     
-    async def send_tender_notification(self, tender: Dict) -> bool:
-        """
-        Відправити сповіщення про тендер
-        
-        Args:
-            tender: Словник з даними тендера
-            
-        Returns:
-            True якщо відправлено успішно, False якщо помилка
-        """
-        try:
-            message = self.format_tender_message(tender)
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode='HTML',
-                disable_web_page_preview=True
-            )
-            print(f"✅ Відправлено сповіщення про тендер {tender.get('id')}")
-            return True
-        except TelegramError as e:
-            print(f"❌ Помилка відправки в Telegram: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ Неочікувана помилка: {e}")
-            return False
+    if test_tender_id in processed_ids:
+        print(f"\n⚠️  Тендер вже був оброблений раніше")
+        print(f"Очищаю storage для тесту...")
+        processed_ids.remove(test_tender_id)
+        storage.save_processed_tenders(processed_ids)
     
-    async def send_test_message(self) -> bool:
-        """
-        Відправити тестове повідомлення
+    # Відправити в Telegram
+    print(f"\n📤 Відправка в Telegram...")
+    success = telegram.send_tender_notification(tender)
+    
+    if success:
+        print(f"✅ Повідомлення успішно відправлено!")
+        print(f"📱 Перевірте свій Telegram!")
         
-        Returns:
-            True якщо відправлено успішно
-        """
-        try:
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text="✅ Prozorro Tender Monitor працює!\nТестове повідомлення від бота."
-            )
-            print("✅ Тестове повідомлення відправлено")
-            return True
-        except TelegramError as e:
-            print(f"❌ Помилка: {e}")
-            return False
+        # Зберегти як оброблений
+        processed_ids = storage.load_processed_tenders()
+        processed_ids.append(test_tender_id)
+        storage.save_processed_tenders(processed_ids)
+        print(f"💾 Тендер збережено як оброблений")
+    else:
+        print(f"❌ Помилка відправки")
+else:
+    print(f"❌ Не вдалося отримати деталі тендера")
+
+print("\n" + "="*70)
