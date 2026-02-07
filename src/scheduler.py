@@ -55,7 +55,7 @@ class TenderMonitor:
                 tender_id = tender.get('id')
                 
                 # Відправити сповіщення
-                success = await self.notifier.send_tender_notification(tender)
+                success = await self.notifier.send_tender_notification_async(tender)
                 
                 if success:
                     # Позначити як оброблений
@@ -79,6 +79,8 @@ class TenderMonitor:
     
     def run_check(self):
         """Запустити перевірку (синхронна обгортка для scheduler)"""
+        # Очищення старих записів (старші 90 днів)
+        self.storage.cleanup_old_tenders(days=90)
         asyncio.run(self.check_new_tenders())
     
     def start_scheduler(self):
@@ -147,7 +149,7 @@ class TenderMonitor:
         
         # Відправити тестове повідомлення
         print("Відправка тестового повідомлення...")
-        await self.notifier.send_test_message()
+        await self.notifier.send_test_message_async()
         
         # Запустити перевірку тендерів
         print("\nЗапуск перевірки тендерів...\n")
