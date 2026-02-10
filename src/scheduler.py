@@ -28,8 +28,8 @@ class TenderMonitor:
         print(f"{'='*70}\n")
         
         try:
-            # Отримати нові тендери за останні 6 годин (для 4 запусків на день)
-            tenders = self.api.search_new_translation_tenders(hours=6)
+            # Отримати нові тендери за останні 24 години (з запасом для щогодинних перевірок)
+            tenders = self.api.search_new_translation_tenders(hours=2)
             
             if not tenders:
                 print("Нових тендерів на переклад не знайдено")
@@ -84,47 +84,35 @@ class TenderMonitor:
         asyncio.run(self.check_new_tenders())
     
     def start_scheduler(self):
-        """Запустити планувальник для перевірок 4 рази на добу"""
+        """Запустити планувальник для щогодинних перевірок"""
         # Отримати часовий пояс з environment variables
         timezone_str = os.getenv('TIMEZONE', 'Europe/Kiev')
         timezone = pytz.timezone(timezone_str)
         
         print(f"\n{'='*70}")
         print(f"Prozorro Tender Monitor запущено!")
-        print(f"Перевірки 4 рази на добу: 06:00, 12:00, 18:00, 00:00 ({timezone_str})")
+        print(f"Перевірки кожну годину ({timezone_str})")
         print(f"Моніторинг: конкурентні процедури на письмовий переклад")
         print(f"{'='*70}\n")
         
         # Створити scheduler
         scheduler = BlockingScheduler(timezone=timezone)
         
-        # Запланувати перевірки 4 рази на день
-        times = [
-            {'hour': 6, 'minute': 0},   # 06:00
-            {'hour': 12, 'minute': 0},  # 12:00
-            {'hour': 18, 'minute': 0},  # 18:00
-            {'hour': 0, 'minute': 0},   # 00:00
-        ]
+        # Перевірка кожну годину (о :00 кожної години)
+        trigger = CronTrigger(
+            minute=0,  # Кожну годину о :00
+            timezone=timezone
+        )
+        scheduler.add_job(
+            self.run_check,
+            trigger=trigger,
+            id='tender_check_hourly',
+            name='Щогодинна перевірка тендерів',
+            replace_existing=True
+        )
         
-        for i, time_config in enumerate(times, 1):
-            trigger = CronTrigger(
-                hour=time_config['hour'],
-                minute=time_config['minute'],
-                timezone=timezone
-            )
-            scheduler.add_job(
-                self.run_check,
-                trigger=trigger,
-                id=f'tender_check_{i}',
-                name=f'Перевірка тендерів #{i}',
-                replace_existing=True
-            )
-        
-        print(f"✅ Заплановано 4 перевірки на добу")
-        print(f"   🌅 06:00 - Ранкова перевірка")
-        print(f"   🌞 12:00 - Обідня перевірка")
-        print(f"   🌆 18:00 - Вечірня перевірка")
-        print(f"   🌙 00:00 - Нічна перевірка\n")
+        print(f"✅ Заплановано перевірки кожну годину")
+        print(f"   🕐 Наступна перевірка о :00\n")
         
         # Запустити першу перевірку одразу (для тестування)
         print("Виконуємо першу перевірку одразу...\n")
