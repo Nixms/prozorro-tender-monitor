@@ -28,7 +28,7 @@ class TenderMonitor:
         print(f"{'='*70}\n")
         
         try:
-            # Отримати нові тендери за останні 24 години (з запасом для щогодинних перевірок)
+            # Отримати нові тендери за останні 2 години (з запасом для щогодинних перевірок)
             tenders = self.api.search_new_translation_tenders(hours=2)
             
             if not tenders:

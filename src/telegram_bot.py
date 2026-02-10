@@ -28,12 +28,6 @@ class TelegramNotifier:
     def format_tender_message(self, tender: Dict) -> str:
         """
         Форматувати повідомлення про тендер
-        
-        Args:
-            tender: Словник з даними тендера
-            
-        Returns:
-            Відформатоване повідомлення
         """
         title = tender.get('title', 'N/A')
         value = tender.get('value', {})
@@ -48,12 +42,9 @@ class TelegramNotifier:
         
         description = tender.get('description', 'Опис відсутній')
         
-        # Короткий ID для UUB посилання
-        tender_id = tender.get('id', '')
+        # Використовуємо tenderID (публічний ID) для посилання
+        tender_id = tender.get('tenderID', tender.get('id', ''))
         
-        # Отримати tenderID для короткого формату посилання
-        # (припускаємо, що він міститься в tender як окреме поле)
-        # Якщо немає, використовуємо довгий ID
         uub_link = f"https://tender.uub.com.ua/tender/{tender_id}/"
         
         message = f"""🔔 Новий тендер на переклад
@@ -72,12 +63,6 @@ class TelegramNotifier:
     async def send_tender_notification_async(self, tender: Dict) -> bool:
         """
         Відправити сповіщення про тендер (async)
-        
-        Args:
-            tender: Словник з даними тендера
-            
-        Returns:
-            True якщо успішно, False якщо помилка
         """
         try:
             message = self.format_tender_message(tender)
@@ -100,21 +85,12 @@ class TelegramNotifier:
     def send_tender_notification(self, tender: Dict) -> bool:
         """
         Відправити сповіщення про тендер (sync wrapper)
-        
-        Args:
-            tender: Словник з даними тендера
-            
-        Returns:
-            True якщо успішно, False якщо помилка
         """
         return asyncio.run(self.send_tender_notification_async(tender))
     
     async def send_test_message_async(self) -> bool:
         """
         Відправити тестове повідомлення (async)
-        
-        Returns:
-            True якщо успішно
         """
         try:
             await self.bot.send_message(
