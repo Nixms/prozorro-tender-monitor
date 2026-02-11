@@ -1,7 +1,7 @@
 """
 Модуль для планування щоденних перевірок
 """
-import asyncio
+import time
 from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -21,7 +21,7 @@ class TenderMonitor:
         self.notifier = TelegramNotifier()
         self.storage = DataStorage()
     
-    async def check_new_tenders(self):
+    def check_new_tenders(self):
         """Перевірити нові тендери та відправити сповіщення"""
         print(f"\n{'='*70}")
         print(f"Запуск перевірки тендерів: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
@@ -55,7 +55,7 @@ class TenderMonitor:
                 tender_id = tender.get('id')
                 
                 # Відправити сповіщення
-                success = await self.notifier.send_tender_notification_async(tender)
+                success = self.notifier.send_tender_notification(tender)
                 
                 if success:
                     # Позначити як оброблений
@@ -64,7 +64,7 @@ class TenderMonitor:
                     
                     # Затримка між повідомленнями
                     if sent_count < len(new_tenders):
-                        await asyncio.sleep(2)
+                        time.sleep(2)
             
             print(f"\n{'='*70}")
             print(f"Перевірку завершено!")
@@ -81,7 +81,7 @@ class TenderMonitor:
         """Запустити перевірку (синхронна обгортка для scheduler)"""
         # Очищення старих записів (старші 90 днів)
         self.storage.cleanup_old_tenders(days=90)
-        asyncio.run(self.check_new_tenders())
+        self.check_new_tenders()
     
     def start_scheduler(self):
         """Запустити планувальник для щогодинних перевірок"""
@@ -129,7 +129,7 @@ class TenderMonitor:
             print("\n\nЗупинка моніторингу...")
             print("До побачення!\n")
     
-    async def run_test(self):
+    def run_test(self):
         """Запустити тестову перевірку зараз"""
         print(f"\n{'='*70}")
         print(f"ТЕСТОВИЙ РЕЖИМ")
@@ -137,11 +137,11 @@ class TenderMonitor:
         
         # Відправити тестове повідомлення
         print("Відправка тестового повідомлення...")
-        await self.notifier.send_test_message_async()
+        self.notifier.send_test_message()
         
         # Запустити перевірку тендерів
         print("\nЗапуск перевірки тендерів...\n")
-        await self.check_new_tenders()
+        self.check_new_tenders()
         
         print(f"\n{'='*70}")
         print(f"ТЕСТ ЗАВЕРШЕНО")
