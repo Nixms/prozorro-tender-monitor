@@ -1,5 +1,6 @@
 """
 Модуль для роботи з локальним сховищем оброблених тендерів
+З підтримкою збереження при перезапуску Railway
 """
 import json
 import os
@@ -11,14 +12,10 @@ class DataStorage:
     """Клас для збереження та завантаження оброблених тендерів"""
     
     def __init__(self, filepath: str = "data/processed_tenders.json"):
-        """
-        Ініціалізація сховища
-        
-        Args:
-            filepath: Шлях до JSON файлу з даними
-        """
+        """Ініціалізація сховища"""
         self.filepath = filepath
         self._ensure_file_exists()
+        self._restore_from_env_if_needed()
     
     def _ensure_file_exists(self):
         """Створити файл якщо він не існує"""
@@ -28,6 +25,26 @@ class DataStorage:
                 "processed_tenders": {},
                 "last_check": None
             })
+    
+    def _restore_from_env_if_needed(self):
+        """
+        Відновити дані з PROCESSED_TENDERS_BACKUP якщо локальний файл порожній
+        """
+        backup = os.getenv('PROCESSED_TENDERS_BACKUP', '')
+        
+        if not backup:
+            return
+        
+        data = self._load_data()
+        
+        if len(data.get("processed_tenders", {})) == 0:
+            try:
+                backup_data = json.loads(backup)
+                if backup_data.get("processed_tenders"):
+                    print(f"🔄 Відновлено {len(backup_data['processed_tenders'])} тендерів з backup")
+                    self._save_data(backup_data)
+            except json.JSONDecodeError:
+                print("⚠️  Помилка парсингу PROCESSED_TENDERS_BACKUP")
     
     def _load_data(self) -> Dict:
         """Завантажити дані з файлу"""
@@ -43,36 +60,20 @@ class DataStorage:
             json.dump(data, f, ensure_ascii=False, indent=2)
     
     def is_processed(self, tender_id: str) -> bool:
-        """
-        Перевірити чи тендер вже оброблено
-        
-        Args:
-            tender_id: ID тендера
-            
-        Returns:
-            True якщо тендер вже оброблено, False якщо ні
-        """
+        """Перевірити чи тендер вже оброблено"""
         data = self._load_data()
         processed = data["processed_tenders"]
         
-        # Підтримка старого формату (список) і нового (словник)
         if isinstance(processed, list):
             return tender_id in processed
         return tender_id in processed
     
     def mark_as_processed(self, tender_id: str):
-        """
-        Позначити тендер як оброблений
-        
-        Args:
-            tender_id: ID тендера
-        """
+        """Позначити тендер як оброблений"""
         data = self._load_data()
         processed = data["processed_tenders"]
         
-        # Підтримка старого формату (список) і нового (словник)
         if isinstance(processed, list):
-            # Конвертуємо старий формат у новий
             processed = {tid: datetime.now().isoformat() for tid in processed}
             data["processed_tenders"] = processed
         
@@ -80,6 +81,16 @@ class DataStorage:
             processed[tender_id] = datetime.now().isoformat()
             data["last_check"] = datetime.now().isoformat()
             self._save_data(data)
+            self._print_backup_instruction(data)
+    
+    def _print_backup_instruction(self, data: Dict):
+        """Вивести JSON для збереження в Railway Variables"""
+        count = len(data.get("processed_tenders", {}))
+        if count > 0 and count % 5 == 0:
+            print(f"\n💾 Backup ({count} тендерів). Оновіть PROCESSED_TENDERS_BACKUP в Railway:")
+            compact = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+            if len(compact) < 2000:
+                print(f"   {compact[:500]}...")
     
     def get_processed_count(self) -> int:
         """Отримати кількість оброблених тендерів"""
@@ -90,29 +101,35 @@ class DataStorage:
             return len(processed)
         return len(processed)
     
+    def get_processed_ids(self) -> List[str]:
+        """Отримати список ID оброблених тендерів"""
+        data = self._load_data()
+        processed = data["processed_tenders"]
+        
+        if isinstance(processed, list):
+            return processed
+        return list(processed.keys())
+    
     def get_last_check(self) -> str:
         """Отримати час останньої перевірки"""
         data = self._load_data()
         return data.get("last_check", "Ніколи")
     
+    def get_backup_json(self) -> str:
+        """Отримати JSON для збереження в PROCESSED_TENDERS_BACKUP"""
+        data = self._load_data()
+        return json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+    
     def cleanup_old_tenders(self, days: int = 90):
-        """
-        Видалити тендери старші за N днів
-        
-        Args:
-            days: Кількість днів (за замовчуванням 90)
-        """
+        """Видалити тендери старші за N днів"""
         data = self._load_data()
         processed = data["processed_tenders"]
         
-        # Якщо старий формат (список) - не можемо очистити по даті
         if isinstance(processed, list):
             print(f"⚠️  Старий формат даних, очищення неможливе")
             return
         
         cutoff_date = datetime.now() - timedelta(days=days)
-        
-        # Фільтруємо тільки свіжі записи
         old_count = len(processed)
         processed_clean = {}
         
@@ -122,7 +139,6 @@ class DataStorage:
                 if tender_date > cutoff_date:
                     processed_clean[tender_id] = date_str
             except:
-                # Якщо дата невалідна - залишаємо
                 processed_clean[tender_id] = date_str
         
         data["processed_tenders"] = processed_clean

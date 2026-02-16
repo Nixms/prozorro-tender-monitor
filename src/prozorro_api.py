@@ -26,6 +26,9 @@ class ProzorroAPI:
         'competitiveOrdering',      # Конкурентні замовлення
     ]
     
+    # CPV код для письмового перекладу
+    TRANSLATION_CPV = '79530000-8'
+    
     def __init__(self):
         """Ініціалізація API клієнта"""
         self.api_url = os.getenv('PROZORRO_API_URL', 'https://api.prozorro.gov.ua/api/2.5/tenders')
@@ -36,9 +39,24 @@ class ProzorroAPI:
             'Accept': 'application/json'
         })
     
-    def is_translation_tender(self, title: str) -> bool:
+    def has_translation_cpv(self, tender_details: Dict) -> bool:
         """
-        Перевірити чи тендер на послуги письмового перекладу за назвою
+        Перевірити чи тендер має CPV код письмового перекладу в items
+        """
+        items = tender_details.get('items', [])
+        
+        for item in items:
+            classification = item.get('classification', {})
+            cpv_id = classification.get('id', '')
+            
+            if cpv_id == self.TRANSLATION_CPV or cpv_id.startswith('79530000'):
+                return True
+        
+        return False
+    
+    def is_translation_tender(self, title: str, description: str = '') -> bool:
+        """
+        Перевірити чи тендер на послуги перекладу за назвою/описом
         """
         if not title:
             return False
@@ -49,6 +67,13 @@ class ProzorroAPI:
             return True
         
         if '79530000' in title_lower:
+            return True
+        
+        if 'послуги' in title_lower and 'переклад' in title_lower:
+            if 'українськ' not in title_lower and 'мовою' not in title_lower:
+                return True
+        
+        if title_lower.startswith('переклад') or title_lower.startswith('послуги з перекладу'):
             return True
         
         return False
@@ -93,7 +118,7 @@ class ProzorroAPI:
             
             all_tenders = []
             page = 0
-            max_pages = 20
+            max_pages = 25  # Збільшено з 20 до 25 для охоплення більшої кількості тендерів
             stop_pagination = False
             
             while page < max_pages and not stop_pagination:
@@ -153,21 +178,21 @@ class ProzorroAPI:
         print(f"\n{'='*70}")
         print(f"🚀 Початок пошуку нових тендерів на переклад")
         print(f"📅 Період: останні {hours} годин")
-        print(f"🎯 Фільтр: конкурентні процедури + письмовий переклад + активні")
+        print(f"🎯 Фільтр: конкурентні процедури + CPV 79530000-8 + активні")
         print(f"{'='*70}\n")
         
-        # Крок 1: Отримати всі тендери за період
         all_tenders = self.get_recent_tenders(hours=hours)
         
         if not all_tenders:
             print("⚠️  Тендери не знайдено")
             return []
         
-        # Крок 2: Перевірити КОЖЕН тендер (робимо детальний запит)
         print(f"\n🔍 Перевірка {len(all_tenders)} тендерів...")
         
         translation_tenders = []
         competitive_count = 0
+        cpv_matches = 0
+        title_matches = 0
         
         for i, tender in enumerate(all_tenders, 1):
             tender_id = tender.get('id')
@@ -178,41 +203,51 @@ class ProzorroAPI:
             if i % 50 == 0:
                 print(f"  📊 Перевірено: {i}/{len(all_tenders)}, конкурентних: {competitive_count}, на переклад: {len(translation_tenders)}")
             
-            # Отримати деталі
             details = self.get_tender_details(tender_id)
             
             if not details:
                 continue
             
-            # Фільтр 1: Конкурентна процедура?
             proc_type = details.get('procurementMethodType', '')
             if not self.is_competitive_procedure(proc_type):
                 continue
             
             competitive_count += 1
             
-            # Фільтр 2: Тендер на переклад?
             title = details.get('title', '')
-            if not self.is_translation_tender(title):
+            description = details.get('description', '')
+            
+            is_translation_by_cpv = self.has_translation_cpv(details)
+            is_translation_by_title = self.is_translation_tender(title, description)
+            
+            if is_translation_by_cpv:
+                cpv_matches += 1
+            if is_translation_by_title:
+                title_matches += 1
+            
+            if not (is_translation_by_cpv or is_translation_by_title):
                 continue
             
-            # Фільтр 3: Тільки активні тендери (приймаються пропозиції)
             status = details.get('status', '')
             if status != 'active.tendering':
-                print(f"  ⏭️  Пропущено (статус: {status}): {details.get('tenderID', tender_id)}")
+                match_type = "CPV" if is_translation_by_cpv else "назва"
+                print(f"  ⏭️  Пропущено (статус: {status}, знайдено по: {match_type}): {details.get('tenderID', tender_id)}")
                 continue
             
-            # Знайшли!
             details['id'] = tender_id
+            details['_match_type'] = 'CPV' if is_translation_by_cpv else 'title'
             translation_tenders.append(details)
             
-            print(f"\n  ✅ ЗНАЙДЕНО! {details.get('tenderID', tender_id)}")
+            match_type = "CPV" if is_translation_by_cpv else "назва"
+            print(f"\n  ✅ ЗНАЙДЕНО! {details.get('tenderID', tender_id)} (по: {match_type})")
             print(f"     Назва: {title[:70]}...")
         
         print(f"\n📊 Результати:")
         print(f"   Всього перевірено: {len(all_tenders)}")
         print(f"   Конкурентних процедур: {competitive_count}")
-        print(f"   На письмовий переклад (активних): {len(translation_tenders)}")
+        print(f"   Збіг по CPV коду: {cpv_matches}")
+        print(f"   Збіг по назві: {title_matches}")
+        print(f"   На переклад (активних): {len(translation_tenders)}")
         
         print(f"\n{'='*70}")
         print(f"✅ Пошук завершено: знайдено {len(translation_tenders)} тендерів")
