@@ -118,7 +118,7 @@ class ProzorroAPI:
             
             all_tenders = []
             page = 0
-            max_pages = 25  # Збільшено з 20 до 25 для охоплення більшої кількості тендерів
+            max_pages = 35  # Збільшено з 25 до 35 для охоплення більшої кількості тендерів
             stop_pagination = False
             
             while page < max_pages and not stop_pagination:
@@ -229,7 +229,7 @@ class ProzorroAPI:
                 continue
             
             status = details.get('status', '')
-            if status != 'active.tendering':
+            if status not in ('active.tendering', 'active.enquiries'):
                 match_type = "CPV" if is_translation_by_cpv else "назва"
                 print(f"  ⏭️  Пропущено (статус: {status}, знайдено по: {match_type}): {details.get('tenderID', tender_id)}")
                 continue
