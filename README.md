@@ -4,7 +4,7 @@
 
 ## Що робить бот
 
-- ✅ Перевіряє нові тендери 4 рази на добу (06:00, 12:00, 18:00, 00:00)
+- ✅ Перевіряє нові тендери щогодини
 - ✅ Фільтрує тільки конкурентні процедури
 - ✅ Шукає тендери з "письмовий переклад" або CPV 79530000-8
 - ✅ Надсилає сповіщення в Telegram з деталями та посиланням на UUB
@@ -14,7 +14,7 @@
 
 ### 1. Клонувати репозиторій
 ```bash
-git clone https://github.com/YOUR_USERNAME/prozorro-tender-monitor.git
+git clone https://github.com/Nixms/prozorro-tender-monitor.git
 cd prozorro-tender-monitor
 ```
 
@@ -49,7 +49,7 @@ python main.py
 
 | Команда | Опис |
 |---------|------|
-| `python main.py` | Запустити моніторинг (4 перевірки на добу) |
+| `python main.py` | Запустити моніторинг (щогодинні перевірки) |
 | `python main.py test` | Тестова перевірка зараз |
 | `python main.py help` | Показати довідку |
 
