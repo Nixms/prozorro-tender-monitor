@@ -138,7 +138,7 @@ class DataStorage:
                 tender_date = datetime.fromisoformat(date_str)
                 if tender_date > cutoff_date:
                     processed_clean[tender_id] = date_str
-            except:
+            except (ValueError, TypeError):
                 processed_clean[tender_id] = date_str
         
         data["processed_tenders"] = processed_clean
