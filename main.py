@@ -3,7 +3,6 @@ Prozorro Tender Monitor - Головний файл
 Моніторинг тендерів на послуги письмового перекладу
 """
 import sys
-import asyncio
 from src.scheduler import TenderMonitor
 
 
@@ -54,7 +53,7 @@ def main():
         elif command == 'test':
             # Тестовий режим
             monitor = TenderMonitor()
-            asyncio.run(monitor.run_test())
+            monitor.run_test()
             return
         
         else:

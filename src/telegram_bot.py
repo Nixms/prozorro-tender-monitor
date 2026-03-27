@@ -51,7 +51,7 @@ class TelegramNotifier:
 💰 Бюджет: {amount:,.2f} {currency}
 📅 Дедлайн подачі: {end_date}
 🏢 Замовник: {customer}
-📝 Опис: {description[:200]}...
+📝 Опис: {description[:200] + '...' if len(description) > 200 else description}
 
 🔗 Посилання: {uub_link}
 """

@@ -87,21 +87,21 @@ class TenderMonitor:
         """Запустити планувальник для щогодинних перевірок"""
         # Отримати часовий пояс з environment variables
         timezone_str = os.getenv('TIMEZONE', 'Europe/Kiev')
-        timezone = pytz.timezone(timezone_str)
-        
+        local_tz = pytz.timezone(timezone_str)
+
         print(f"\n{'='*70}")
         print(f"Prozorro Tender Monitor запущено!")
         print(f"Перевірки кожну годину ({timezone_str})")
         print(f"Моніторинг: конкурентні процедури на письмовий переклад")
         print(f"{'='*70}\n")
-        
+
         # Створити scheduler
-        scheduler = BlockingScheduler(timezone=timezone)
-        
+        scheduler = BlockingScheduler(timezone=local_tz)
+
         # Перевірка кожну годину (о :00 кожної години)
         trigger = CronTrigger(
             minute=0,  # Кожну годину о :00
-            timezone=timezone
+            timezone=local_tz
         )
         scheduler.add_job(
             self.run_check,
